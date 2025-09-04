@@ -64,12 +64,6 @@ class Database:
             logger.error(f"Ошибка добавления устройства: {e}")
             return False
     
-    def get_devices(self):
-        """Получение списка устройств"""
-        cursor = self.conn.cursor()
-        cursor.execute('SELECT name FROM devices_to_copy')
-        return [row[0] for row in cursor.fetchall()]
-    
     def is_device_known(self, device_name):
         """Проверка, известно ли устройство"""
         cursor = self.conn.cursor()
@@ -159,14 +153,14 @@ class Database:
                 return 0  # файл уже есть в БД
 
             # Извлекаем имя устройства из имени родительской папки
-            folder_name = os.path.basename(os.path.dirname(file_path))
-            device_name = folder_name.split('_')[0]  # первая часть до "_"
+            dir_name = os.path.basename(os.path.dirname(file_path))
+            device_name = dir_name.split('_')[0]  # первая часть до "_"
 
             # Сохраняем время создания файла
             created_time = datetime.fromtimestamp(os.path.getctime(file_path))
 
             # Добавляем запись в БД
-            self.add_file(device_name, "", os.path.basename(file_path), file_path, created_time)
+            self.add_file(device_name, dir_name, os.path.basename(file_path), file_path, created_time)
             logger.info(f"Добавлен новый файл в БД: {file_path}")
 
             return 1
@@ -174,30 +168,6 @@ class Database:
         except Exception as e:
             logger.error(f"Ошибка при добавлении файла {file_path}: {e}")
             return 0
-
-    def are_all_files_uploaded_in_folder(self, folder_path):
-        """Проверяет, все ли файлы в папке были отправлены в S3"""
-        try:
-            cursor = self.conn.cursor()
-            
-            # Получаем все файлы из этой папки
-            cursor.execute('''
-                SELECT COUNT(*) as total_files, 
-                    SUM(CASE WHEN is_uploaded = TRUE THEN 1 ELSE 0 END) as uploaded_files
-                FROM files 
-                WHERE file_path LIKE ?
-            ''', (f"{folder_path}%",))
-            
-            result = cursor.fetchone()
-            total_files = result[0] if result else 0
-            uploaded_files = result[1] if result else 0
-            
-            # Если файлов нет или все отправлены - можно удалять
-            return total_files == 0 or total_files == uploaded_files
-            
-        except sqlite3.Error as e:
-            logger.error(f"Ошибка проверки статуса папки {folder_path}: {e}")
-            return False  # В случае ошибки лучше не удалять
 
     def get_oldest_uploaded_files(self):
         """Получение самых старых отправленных файлов для удаления"""
@@ -224,3 +194,12 @@ class Database:
         except sqlite3.Error as e:
             logger.error(f"Ошибка удаления файла {file_id}: {e}")
             return False
+    
+    def file_exists(self, device_name, file_name):
+        cursor = self.conn.cursor()
+        cursor.execute('''
+            SELECT 1 FROM files 
+            WHERE device_name = ? AND file_name = ?
+            LIMIT 1
+        ''', (device_name, file_name))
+        return cursor.fetchone() is not None

@@ -1,5 +1,8 @@
 import os
 import shutil
+import time
+import win32api
+import win32con
 from flash_copy_tool.logger import logger
 from datetime import datetime
 from flash_copy_tool.config import config
@@ -23,7 +26,7 @@ class FileManager:
                 logger.warning(f"Не найдено MP4 файлов на флешке {volume_name}")
                 return False
             
-            # 1.1.2.2 - Создание целевой директории
+            # 1.1.2.2 - Создание целевой директории в формате: метка_тома+дата_старого_файла+дата_копирования
             copy_start_time = datetime.now()
             folder_name = f"{volume_name}_{oldest_date.strftime('%Y-%m-%d_%H-%M-%S')}"
             target_folder = os.path.join(config.ARCHIVE_DIR, folder_name)
@@ -31,7 +34,7 @@ class FileManager:
             
             logger.info(f"Создана целевая папка: {target_folder}")
             
-            # 1.1.2.2 - Копирование MP4 файлов
+            # 1.1.2.2 - Копирование MP4 файлов (исключая IGNORE_PATHS)
             copied_files = self.copy_mp4_files(source_drive, target_folder, volume_name)
             
             if copied_files > 0:
@@ -72,11 +75,6 @@ class FileManager:
     def copy_mp4_files(self, source_drive, target_folder, volume_name):
         """Копирование MP4 файлов в одну папку, пропуская дубликаты"""
         copied_count = 0
-        existing_files = set()
-        
-        # Получаем список уже существующих файлов в целевой папке
-        if os.path.exists(target_folder):
-            existing_files = set(os.listdir(target_folder))
         
         for root, dirs, files in os.walk(source_drive):
             # Пропуск игнорируемых путей
@@ -84,17 +82,15 @@ class FileManager:
             
             for file in files:
                 if file.lower().endswith('.mp4'):
+                    if self.db.file_exists(volume_name, file):
+                        logger.info(f"Пропускаем дубликат: {file} уже существует")
+                        continue
+
                     # ✅ ПРОВЕРКА МЕСТА ПЕРЕД КАЖДЫМ ФАЙЛОМ
                     if not self.ensure_free_space():
                         logger.error("Не удалось обеспечить достаточно свободного места, прерывание копирования")
                         return copied_count
-                    
                     source_file = os.path.join(root, file)
-                    
-                    # Проверяем, не существует ли уже файл с таким именем
-                    if file in existing_files:
-                        logger.info(f"Пропускаем дубликат: {file} уже существует")
-                        continue
                     
                     try:
                         # Копируем файл прямо в целевую папку
@@ -107,7 +103,6 @@ class FileManager:
                         self.db.add_file(volume_name, dir_name, file, dest_file, created_time)
                         
                         copied_count += 1
-                        existing_files.add(file)
                         logger.info(f"Скопирован: {file}")
                         
                     except Exception as e:
@@ -144,34 +139,56 @@ class FileManager:
         except Exception as e:
             logger.error(f"Ошибка очистки флешки: {e}")
     
+
+
     def ensure_free_space(self):
         """Гарантирует наличие свободного места, удаляя отправленные файлы"""
         try:
-            usage = shutil.disk_usage(config.ROOT_DIR)
-            free_space = usage.free
-            
-            if free_space >= config.MINIMUM_FREE_MEMORY:
-                return True
+            while True:
+                usage = shutil.disk_usage(config.ROOT_DIR)
+                total_space = usage.total
+                used_space = usage.used
+                free_space = usage.free
+
+                logger.info(
+                    f"Диск для ROOT_DIR: {config.ROOT_DIR}\n"
+                    f"Общий размер: {total_space} байт ({total_space / (1024**3):.2f} ГБ)\n"
+                    f"Использовано: {used_space} байт ({used_space / (1024**3):.2f} ГБ)\n"
+                    f"Свободно: {free_space} байт ({free_space / (1024**3):.2f} ГБ)\n"
+                    f"Минимум по конфигу: {config.MINIMUM_FREE_MEMORY} байт "
+                    f"({config.MINIMUM_FREE_MEMORY / (1024**3):.2f} ГБ)"
+                )
                 
-            logger.warning(f"Мало свободного места: {free_space / (1024**3):.1f}GB < {config.MINIMUM_FREE_MEMORY / (1024**3):.1f}GB")
-            
-            # Удаляем самые старые отправленные файлы
-            deleted_count = self.delete_oldest_uploaded_files()
-            
-            if deleted_count == 0:
-                logger.error("Не удалось освободить место - нет отправленных файлов для удаления")
-                return False
-            
-            # Проверяем свободное место снова
-            usage = shutil.disk_usage(config.ROOT_DIR)
-            new_free_space = usage.free
-            
-            if new_free_space >= config.MINIMUM_FREE_MEMORY:
-                logger.info(f"Освобождено место: {new_free_space / (1024**3):.1f}GB")
-                return True
-            else:
-                logger.warning(f"После удаления все еще мало места: {new_free_space / (1024**3):.1f}GB")
-                return False
+                if free_space >= config.MINIMUM_FREE_MEMORY:
+                    return True  # ✅ Места хватает, выходим
+
+                logger.warning(
+                    f"Мало свободного места: {free_space / (1024**3):.2f} ГБ < "
+                    f"{config.MINIMUM_FREE_MEMORY / (1024**3):.2f} ГБ"
+                )
+
+                # Пытаемся удалить старые отправленные файлы
+                deleted_count = self.delete_oldest_uploaded_files()
+                if deleted_count > 0:
+                    continue  # Проверим снова сразу после удаления
+
+                
+                usage = shutil.disk_usage(config.ROOT_DIR)
+                if usage.free >= config.MINIMUM_FREE_MEMORY:
+                    logger.info("Появилось свободное место во время ожидания")
+                    return True
+
+                logger.info("Место не появилось, пробуем снова...")
+                win32api.MessageBox(
+                    0,
+                    "Недостаточно свободного места!\n\n"
+                    f"Свободно: {free_space / (1024**3):.2f} ГБ\n"
+                    f"Требуется минимум: {config.MINIMUM_FREE_MEMORY / (1024**3):.2f} ГБ\n\n"
+                    "Освободите место на диске и нажмите OK для продолжения.",
+                    "Ошибка: Нет места",
+                    win32con.MB_ICONERROR | win32con.MB_OK
+                )
+                time.sleep(5)  # Ждем перед следующей попыткой
             
         except Exception as e:
             logger.error(f"Ошибка освобождения места: {e}")
@@ -199,6 +216,9 @@ class FileManager:
                     # Удаляем запись из БД
                     self.db.delete_file(file_id)
                     deleted_count += 1
+                    
+                    # Логируем прогресс
+                    logger.debug(f"Удалено файлов: {deleted_count}")
                     
                 except Exception as e:
                     logger.error(f"Ошибка удаления файла {file_path}: {e}")
