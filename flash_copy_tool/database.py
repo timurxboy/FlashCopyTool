@@ -195,11 +195,11 @@ class Database:
             logger.error(f"Ошибка удаления файла {file_id}: {e}")
             return False
     
-    def file_exists(self, device_name, file_name):
+    def file_exists(self, device_name, dir_name, file_name):
         cursor = self.conn.cursor()
         cursor.execute('''
             SELECT 1 FROM files 
-            WHERE device_name = ? AND file_name = ?
+            WHERE device_name = ? AND dir_name = ? AND file_name = ?
             LIMIT 1
-        ''', (device_name, file_name))
+        ''', (device_name, dir_name, file_name))
         return cursor.fetchone() is not None

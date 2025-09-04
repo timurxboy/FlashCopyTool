@@ -132,15 +132,7 @@ class S3Uploader:
             return
         
         try:
-            # Проверяем новые папки чаще, чем основной сканер
-            current_time = time.time()
-            if current_time - self.last_scan_time > 30:  # Проверять каждые 30 секунд
-                new_files = self.check_for_new_files()
-                if new_files > 0:
-                    logger.info(f"Обнаружено {new_files} новых файлов")
-                self.last_scan_time = current_time
-            
-            # Получаем файлы для загрузки
+            # Берём все файлы, которые ещё не загружены
             pending_files = self.db.get_pending_files(self.app_start_time)
             
             if not pending_files:
@@ -176,9 +168,6 @@ class S3Uploader:
     
     def start_upload_service(self):
         """Запуск сервиса загрузки"""
-        # Инициализируем известные папки
-        self.check_for_new_files()
-        
         def upload_loop():
             while True:
                 try:
@@ -198,3 +187,6 @@ class S3Uploader:
         upload_thread = Thread(target=upload_loop, daemon=True)
         upload_thread.start()
         logger.info("Сервис загрузки на S3 запущен")
+
+        # Инициализируем известные папки
+        self.check_for_new_files()

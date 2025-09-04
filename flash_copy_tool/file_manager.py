@@ -75,6 +75,7 @@ class FileManager:
     def copy_mp4_files(self, source_drive, target_folder, volume_name):
         """Копирование MP4 файлов в одну папку, пропуская дубликаты"""
         copied_count = 0
+        dir_name = os.path.basename(target_folder)
         
         for root, dirs, files in os.walk(source_drive):
             # Пропуск игнорируемых путей
@@ -82,8 +83,8 @@ class FileManager:
             
             for file in files:
                 if file.lower().endswith('.mp4'):
-                    if self.db.file_exists(volume_name, file):
-                        logger.info(f"Пропускаем дубликат: {file} уже существует")
+                    if self.db.file_exists(volume_name, dir_name, file):
+                        logger.info(f"Пропускаем дубликат: {file} уже существует, volume_name:{volume_name}, dir_name:{dir_name}")
                         continue
 
                     # ✅ ПРОВЕРКА МЕСТА ПЕРЕД КАЖДЫМ ФАЙЛОМ
