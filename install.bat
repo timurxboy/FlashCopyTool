@@ -44,12 +44,13 @@ if not exist "C:\Program Files\FlashCopyTool\.env" (
         echo STORAGE_BUCKET_NAME=
         echo S3_ENDPOINT_URL=
         echo S3_REGION_NAME=
+        echo UNIT_NAME=
         echo.
         echo # System Settings
-        echo MINIMUM_FREE_MEMORY=100GB
-        echo IGNORE_PATHS=/tmp
+        echo MINIMUM_FREE_MEMORY=50GB
+        echo IGNORE_PATHS=/Event
         echo SCAN_TIMEOUT=5000
-        echo ROOT_DIR=
+        echo ROOT_DIR=D:\videos
         echo.
         echo # Logging Configuration
         echo LOG_LEVEL=INFO

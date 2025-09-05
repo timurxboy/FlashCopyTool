@@ -80,7 +80,7 @@ class S3Uploader:
                 self.db.mark_upload_started(file_id)
                 
                 # Формирование S3 пути: device_name/file_name
-                s3_path = f"{dir_name}/{file_name}"
+                s3_path = f"{config.UNIT_NAME}/{dir_name}/{file_name}"
                 
                 # Загрузка файла
                 self.s3_client.upload_file(
@@ -146,7 +146,7 @@ class S3Uploader:
             
             for file_id, dir_name, file_name, file_path in pending_files:
                 if os.path.exists(file_path):
-                    logger.info(f"Начало загрузки: {file_name}")
+                    logger.info(f"Начало загрузки: {config.UNIT_NAME}/{dir_name}/{file_name}")
                     success = self.upload_file(file_id, dir_name, file_name, file_path)
                     
                     if success:

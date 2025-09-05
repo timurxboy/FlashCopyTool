@@ -95,6 +95,10 @@ class Config:
     def S3_REGION_NAME(self):
         return self.get('S3_REGION_NAME')
     
+    @property
+    def UNIT_NAME(self):
+        return self.get('UNIT_NAME')
+
     # Параметры системы
     @property
     def MINIMUM_FREE_MEMORY(self):
